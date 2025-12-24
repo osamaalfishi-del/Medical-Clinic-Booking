@@ -1,0 +1,452 @@
+
+``html name=admin.html
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>إدارة الحجوزات</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="assets/js/security.js"></script>
+    <script src="assets/js/core-engine.js"></script>
+    <script src="assets/js/sms-engine.js"></script>
+    <script src="assets/js/ui.js"></script>
+    <style>
+      /* small tweaks for action column */
+      .action-cell {display:flex;gap:6px;justify-content:flex-start;flex-wrap:wrap}
+      .edit-btn{background:#4060a8;color:#fff;padding:6px 8px;border-radius:6px;border:none;cursor:pointer}
+      .input-error {color:var(--danger);font-size:0.85rem;margin-top:6px;display:block}
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+      <div class="nav-container">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="nav-toggle" aria-label="فتح القائمة" onclick="toggleSidebar()">☰</button>
+          <div class="logo"><i class="fas fa-stethoscope"></i> عيادة النخبة</div>
+        </div>
+        <div class="nav-links">
+          <a href="dashboard.html">الرئيسية</a>
+          <a href="admin.html" class="active">الحجوزات</a>
+          <a href="report.html">التقارير</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header"><h3>المدير العام</h3></div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html"><i class="fas fa-home"></i> الرئيسية</a>
+                <a href="admin.html" class="active"><i class="fas fa-users"></i> الحجوزات</a>
+                <a href="report.html"><i class="fas fa-chart-line"></i> التقارير</a>
+                <a href="#" onclick="SecurityManager.logout()"><i class="fas fa-sign-out-alt"></i> خروج</a>
+            </nav>
+        </aside>
+
+        <main class="dashboard-content" id="mainContent">
+            <div class="admin-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h2>سجل الحجوزات</h2>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="text" id="searchInput" placeholder="بحث بالاسم أو الهاتف..." style="padding: 8px; width: 260px;">
+                    <button id="exportCSV" class="small-btn"><i class="fas fa-file-csv"></i> تصدير CSV</button>
+                    <input type="file" id="importFile" accept=".json" style="display:none;">
+                    <button id="importBtn" class="small-btn"><i class="fas fa-file-import"></i> استيراد JSON</button>
+                </div>
+            </div>
+
+            <table class="admin-table" aria-describedby="bookingsTableDesc">
+                <caption id="bookingsTableDesc" style="display:none">قائمة الحجوزات</caption>
+                <thead>
+                    <tr>
+                        <th>رقم الحجز</th>
+                        <th>الاسم</th>
+                        <th>الهاتف</th>
+                        <th>الخدمة</th>
+                        <th>التاريخ</th>
+                        <th>الحالة</th>
+                        <th>الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="bookingsTable" aria-live="polite">
+                </tbody>
+            </table>
+
+            <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div class="pagination" id="pagination"></div>
+                <div style="min-width:220px;">
+                    <small>سجل رسائل SMS:</small>
+                    <div id="smsLog"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // small sidebar toggle for mobile
+        function toggleSidebar(){
+          document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        const tbody = document.getElementById('bookingsTable');
+        const searchEl = document.getElementById('searchInput');
+        const perPage = 10;
+        let currentPage = 1;
+        let currentData = engine.getAllBookings();
+
+        function translateStatus(s) {
+            const map = { pending: 'انتظار', confirmed: 'مؤكد', completed: 'مكتمل', cancelled: 'ملغي' };
+            return map[s] || s;
+        }
+
+        function renderTablePage(data, page = 1) {
+            currentData = data;
+            const total = data.length;
+            const pages = Math.max(1, Math.ceil(total / perPage));
+            currentPage = Math.min(page, pages);
+            const start = (currentPage - 1) * perPage;
+            const pageItems = data.slice(start, start + perPage);
+
+            tbody.innerHTML = pageItems.length ? pageItems.map(b => `
+                <tr>
+                    <td data-label="رقم الحجز">${b.id}</td>
+                    <td data-label="الاسم">${escapeHtml(b.name)}</td>
+                    <td data-label="الهاتف">${escapeHtml(b.phone)}</td>
+                    <td data-label="الخدمة">${escapeHtml(b.service)}</td>
+                    <td data-label="التاريخ">${b.date} <br> <small>${b.time}</small></td>
+                    <td data-label="الحالة"><span class="status-badge ${b.status}">${translateStatus(b.status)}</span></td>
+                    <td data-label="الإجراءات" class="action-cell">
+                        <button class="edit-btn" onclick="openEditModal('${b.id}')" title="تعديل"><i class="fas fa-edit"></i> تعديل</button>
+                        ${b.status === 'pending' ? `<button onclick="confirmBooking('${b.id}')" class="btn-action confirm" title="تأكيد"><i class="fas fa-check"></i></button>` : ''}
+                        ${b.status !== 'cancelled' ? `<button onclick="cancelBooking('${b.id}')" class="btn-action delete" title="إلغاء"><i class="fas fa-times"></i></button>` : ''}
+                        <button onclick="deleteBooking('${b.id}')" class="btn-action delete" title="حذف نهائي"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('') : '<tr><td colspan="7">لا توجد بيانات</td></tr>';
+
+            renderPagination(pages);
+        }
+
+        function renderPagination(pages) {
+            const el = document.getElementById('pagination');
+            el.innerHTML = '';
+            for (let i = 1; i <= pages; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'small-btn';
+                btn.textContent = i;
+                if (i === currentPage) { btn.style.background = '#3498db'; btn.style.color = '#fff'; }
+                btn.onclick = () => renderTablePage(currentData, i);
+                el.appendChild(btn);
+            }
+        }
+
+        function escapeHtml(s) {
+            return UI.escapeHtml(s || '');
+        }
+
+        function confirmBooking(id) {
+            if (engine.updateStatus(id, 'confirmed')) {
+                const booking = engine.getAllBookings().find(b => b.id === id);
+                SMSManager.notifyConfirmation(booking);
+                UI.showToast('تم تأكيد الحجز', 'success');
+                renderTablePage(filterData(), currentPage);
+            } else {
+                UI.showToast('فشل في تأكيد الحجز', 'error');
+            }
+        }
+
+        async function cancelBooking(id) {
+            const ok = await UI.confirmAsync('تأكيد إلغاء الحجز؟', 'تأكيد الإلغاء');
+            if (!ok) return;
+            if (engine.cancelBooking(id)) {
+                UI.showToast('تم إلغاء الحجز', 'info');
+                renderTablePage(filterData(), currentPage);
+            } else {
+                UI.showToast('فشل في الإلغاء', 'error');
+            }
+        }
+
+        async function deleteBooking(id) {
+            const ok = await UI.confirmAsync('هذا الإجراء سيؤدي إلى حذف الحجز نهائياً. متابعة؟', 'حذف نهائي');
+            if (!ok) return;
+            engine.deleteBooking(id);
+            UI.showToast('تم حذف الحجز', 'info');
+            renderTablePage(filterData(), currentPage);
+        }
+
+        function debounce(fn, wait = 300) {
+            let t;
+            return (...args) => {
+                clearTimeout(t);
+                t = setTimeout(() => fn.apply(this, args), wait);
+            };
+        }
+
+        function filterData() {
+            const term = searchEl.value.trim().toLowerCase();
+            const all = engine.getAllBookings();
+            if (!term) return all;
+            return all.filter(b => (b.name || '').toLowerCase().includes(term) || (b.phone || '').includes(term) || (b.id || '').toLowerCase().includes(term));
+        }
+
+        const onSearch = debounce(() => renderTablePage(filterData(), 1), 250);
+        searchEl.addEventListener('input', onSearch);
+
+        // export/import
+        document.getElementById('exportCSV').addEventListener('click', () => {
+            const csv = engine.exportCSV();
+            if (!csv) return UI.showToast('لا توجد بيانات للتصدير', 'info');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `bookings_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            UI.showToast('تم تصدير CSV', 'success');
+        });
+
+        document.getElementById('importBtn').addEventListener('click', () => {
+            document.getElementById('importFile').value = '';
+            document.getElementById('importFile').click();
+        });
+
+        document.getElementById('importFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                let parsed;
+                try {
+                    parsed = JSON.parse(reader.result);
+                } catch (err) {
+                    UI.showToast('الملف ليس JSON صالح', 'error');
+                    return;
+                }
+
+                // show preview and ask for merge/replace
+                const action = await UI.showImportPreview(Array.isArray(parsed) ? parsed : [parsed], 8);
+                if (action === 'cancel') {
+                    UI.showToast('تم إلغاء الاستيراد', 'info');
+                    return;
+                }
+                const replace = action === 'replace';
+                const res = engine.importFromJSON(JSON.stringify(parsed), replace);
+                if (res.success) {
+                    UI.showToast('تم استيراد البيانات بنجاح', 'success');
+                    renderTablePage(filterData(), 1);
+                } else {
+                    UI.showToast('فشل الاستيراد: ' + res.message, 'error');
+                }
+            };
+            reader.readAsText(file, 'utf8');
+        });
+
+        // edit modal with inline validation
+        async function openEditModal(id) {
+            const booking = engine.getAllBookings().find(b => b.id === id);
+            if (!booking) { UI.showToast('الحجز غير موجود', 'error'); return; }
+
+            // modal HTML: fields with error spans
+            const modalHtml = `
+              <div style="margin-bottom:8px" class="modal-grid">
+                <div>
+                  <label>الاسم</label>
+                  <input id="m_name" type="text" value="${escapeHtml(booking.name)}">
+                  <span id="err_name" class="input-error" style="display:none"></span>
+                </div>
+                <div>
+                  <label>الهاتف</label>
+                  <input id="m_phone" type="tel" value="${escapeHtml(booking.phone)}">
+                  <span id="err_phone" class="input-error" style="display:none"></span>
+                </div>
+                <div>
+                  <label>الخدمة</label>
+                  <select id="m_service">
+                    <option value="استشارة عامة" ${booking.service.includes('استشارة') ? 'selected' : ''}>استشارة عامة</option>
+                    <option value="فحص أسنان" ${booking.service.includes('أسنان') ? 'selected' : ''}>فحص أسنان</option>
+                    <option value="جلدية وليزر" ${booking.service.includes('جلدية') ? 'selected' : ''}>جلدية وليزر</option>
+                  </select>
+                  <span id="err_service" class="input-error" style="display:none"></span>
+                </div>
+                <div>
+                  <label>السعر (ريال)</label>
+                  <input id="m_price" type="text" value="${escapeHtml(booking.price || '')}">
+                  <span id="err_price" class="input-error" style="display:none"></span>
+                </div>
+                <div>
+                  <label>التاريخ</label>
+                  <input id="m_date" type="date" value="${escapeHtml(booking.date)}">
+                  <span id="err_date" class="input-error" style="display:none"></span>
+                </div>
+                <div>
+                  <label>الوقت</label>
+                  <select id="m_time">
+                    ${generateTimeOptions(booking.time)}
+                  </select>
+                  <span id="err_time" class="input-error" style="display:none"></span>
+                </div>
+                <div style="grid-column:1/-1">
+                  <label>الحالة</label>
+                  <select id="m_status">
+                    <option value="pending" ${booking.status==='pending'?'selected':''}>انتظار</option>
+                    <option value="confirmed" ${booking.status==='confirmed'?'selected':''}>مؤكد</option>
+                    <option value="completed" ${booking.status==='completed'?'selected':''}>مكتمل</option>
+                    <option value="cancelled" ${booking.status==='cancelled'?'selected':''}>ملغي</option>
+                  </select>
+                </div>
+              </div>
+            `;
+
+            const modal = UI.createModal({
+              title: `تعديل الحجز — ${booking.id}`,
+              html: modalHtml,
+              submitText: 'حفظ التغييرات',
+              cancelText: 'إلغاء',
+              onSubmit: async (modalEl, {close}) => {
+                // final validation on submit
+                const valid = performValidation(modalEl);
+                if (!valid) {
+                  UI.showToast('راجع الحقول قبل الحفظ', 'error');
+                  return;
+                }
+
+                const updated = {
+                  name: modalEl.querySelector('#m_name').value.trim(),
+                  phone: modalEl.querySelector('#m_phone').value.trim(),
+                  service: modalEl.querySelector('#m_service').value,
+                  price: modalEl.querySelector('#m_price').value.trim(),
+                  date: modalEl.querySelector('#m_date').value,
+                  time: modalEl.querySelector('#m_time').value,
+                  status: modalEl.querySelector('#m_status').value
+                };
+
+                const res = engine.updateBooking(id, updated);
+                if (!res.success) {
+                  UI.showToast(res.message || 'فشل تحديث الحجز', 'error');
+                  return;
+                }
+                UI.showToast('تم حفظ التغييرات', 'success');
+                if (updated.status === 'confirmed') {
+                  SMSManager.notifyConfirmation(res.booking);
+                }
+                close();
+                renderTablePage(filterData(), currentPage);
+              }
+            });
+
+            // attach live validation to modal fields
+            const m = modal.element;
+            const fields = {
+              name: m.querySelector('#m_name'),
+              phone: m.querySelector('#m_phone'),
+              service: m.querySelector('#m_service'),
+              price: m.querySelector('#m_price'),
+              date: m.querySelector('#m_date'),
+              time: m.querySelector('#m_time')
+            };
+            const errs = {
+              name: m.querySelector('#err_name'),
+              phone: m.querySelector('#err_phone'),
+              service: m.querySelector('#err_service'),
+              price: m.querySelector('#err_price'),
+              date: m.querySelector('#err_date'),
+              time: m.querySelector('#err_time')
+            };
+
+            const submitBtn = m.querySelector('.modal-submit');
+
+            function setError(field, message) {
+              if (message) {
+                errs[field].textContent = message;
+                errs[field].style.display = 'block';
+              } else {
+                errs[field].textContent = '';
+                errs[field].style.display = 'none';
+              }
+            }
+
+            function validateName(v) {
+              if (!v || v.length < 3) return 'الاسم يجب أن يحتوي على 3 أحرف على الأقل';
+              return '';
+            }
+            function validatePhone(v) {
+              if (!/^7\d{8}$/.test(v)) return 'رقم الهاتف يجب أن يبدأ بـ7 ويتكون من 9 أرقام';
+              return '';
+            }
+            function validatePrice(v) {
+              if (!v || isNaN(parseInt(v))) return 'السعر غير صالح';
+              if (parseInt(v) < 0) return 'السعر يجب أن يكون رقمًا موجبًا';
+              return '';
+            }
+            function validateDateTime(d, t) {
+              if (!d) return 'اختر التاريخ';
+              if (!t) return 'اختر الوقت';
+              const dt = new Date(d + 'T' + t + ':00');
+              if (isNaN(dt.getTime())) return 'تاريخ/وقت غير صالح';
+              if (dt.getTime() < Date.now() - 1000) return 'الوقت يجب أن يكون في المستقبل';
+              return '';
+            }
+
+            function performValidation(modEl) {
+              const vName = fields.name.value.trim();
+              const vPhone = fields.phone.value.trim();
+              const vPrice = fields.price.value.trim();
+              const vDate = fields.date.value;
+              const vTime = fields.time.value;
+
+              const eName = validateName(vName);
+              const ePhone = validatePhone(vPhone);
+              const ePrice = validatePrice(vPrice);
+              const eDateTime = validateDateTime(vDate, vTime);
+
+              setError('name', eName);
+              setError('phone', ePhone);
+              setError('price', ePrice);
+
+              // date/time might have separate messages
+              if (eDateTime) {
+                // decide where to show: date field error
+                setError('date', eDateTime);
+                setError('time', '');
+              } else {
+                setError('date', '');
+                setError('time', '');
+              }
+
+              const allOk = !eName && !ePhone && !ePrice && !eDateTime;
+              submitBtn.disabled = !allOk;
+              submitBtn.style.opacity = allOk ? '1' : '0.6';
+              return allOk;
+            }
+
+            // attach listeners
+            Object.values(fields).forEach(f => f.addEventListener('input', () => performValidation(m)));
+            // initial validation run
+            setTimeout(() => performValidation(m), 60);
+        }
+
+        function generateTimeOptions(selected = '') {
+            const start = 9; const end = 21;
+            let out = '<option value="">اختر الوقت</option>';
+            for (let i = start; i < end; i++) {
+                const hh = String(i).padStart(2,'0');
+                const opt1 = `${hh}:00`;
+                const opt2 = `${hh}:30`;
+                out += `<option value="${opt1}" ${selected===opt1?'selected':''}>${opt1}</option>`;
+                out += `<option value="${opt2}" ${selected===opt2?'selected':''}>${opt2}</option>`;
+            }
+            return out;
+        }
+
+        // Listen to engine events
+        window.addEventListener('bookingsUpdated', (ev) => {
+            renderTablePage(filterData(), currentPage);
+        });
+
+        // init
+        renderTablePage(engine.getAllBookings(), 1);
+    </script>
+</body>
+</html>

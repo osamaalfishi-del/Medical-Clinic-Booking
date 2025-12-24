@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>لوحة التحكم</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="assets/js/security.js"></script>
+    <script src="assets/js/core-engine.js"></script>
+    <script src="assets/js/ui.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+      <div class="nav-container">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="nav-toggle" aria-label="فتح القائمة" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+          <div class="logo"><i class="fas fa-stethoscope"></i> عيادة النخبة</div>
+        </div>
+        <div class="nav-links">
+          <a href="dashboard.html" class="active">الرئيسية</a>
+          <a href="admin.html">الحجوزات</a>
+          <a href="report.html">التقارير</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header"><h3>المدير العام</h3></div>
+            <nav class="sidebar-menu">
+                <a href="dashboard.html" class="active"><i class="fas fa-home"></i> الرئيسية</a>
+                <a href="admin.html"><i class="fas fa-users"></i> الحجوزات</a>
+                <a href="report.html"><i class="fas fa-chart-line"></i> التقارير</a>
+                <a href="#" onclick="SecurityManager.logout()"><i class="fas fa-sign-out-alt"></i> خروج</a>
+            </nav>
+        </aside>
+
+        <main class="dashboard-content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>الحجوزات اليوم</h3>
+                    <p class="stat-number" id="statToday">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>قيد الانتظار</h3>
+                    <p class="stat-number" id="statPending">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>الإيرادات المتوقعة</h3>
+                    <p class="stat-number" id="statRevenue">0 ريال</p>
+                </div>
+            </div>
+
+            <div class="chart-container" style="background:#fff;padding:18px;margin-top:18px;border-radius:10px;">
+                <canvas id="bookingsChart"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        function updateStatsAndChart() {
+            const stats = engine.getStats();
+            document.getElementById('statToday').textContent = stats.today;
+            document.getElementById('statPending').textContent = stats.pending;
+            document.getElementById('statRevenue').textContent = stats.revenue + ' ريال';
+
+            const completed = engine.getAllBookings().filter(b => b.status === 'completed').length;
+            const pending = stats.pending;
+            const cancelled = engine.getAllBookings().filter(b => b.status === 'cancelled').length;
+
+            if (window._bookingsChart) {
+                window._bookingsChart.data.datasets[0].data = [completed, pending, cancelled];
+                window._bookingsChart.update();
+            } else {
+                const ctx = document.getElementById('bookingsChart').getContext('2d');
+                window._bookingsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['مكتمل', 'انتظار', 'ملغي'],
+                        datasets: [{
+                            label: 'حالة الحجوزات',
+                            data: [completed, pending, cancelled],
+                            backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+        }
+
+        // initial
+        updateStatsAndChart();
+        // update on changes
+        window.addEventListener('bookingsUpdated', updateStatsAndChart);
+
+        // for demo: show helpful toast
+        UI.showToast('مرحبا بك في لوحة التحكم — يمكنك تعديل الحجوزات مباشرة من صفحة الحجوزات', 'info', 6000);
+    </script>
+</body>
+</html>

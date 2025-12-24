@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>حجز موعد | عيادة النخبة</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo"><i class="fas fa-stethoscope"></i> عيادة النخبة</div>
+            <div class="nav-links">
+                <a href="#" class="active">الرئيسية</a>
+                <a href="#services">خدماتنا</a>
+                <a href="#contact">اتصل بنا</a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-content">
+            <h1>احجز موعدك الطبي بسهولة</h1>
+            <p>نظام حجز فوري ومؤكد بدون انتظار</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="booking-card">
+            <div class="card-header">
+                <h3><i class="fas fa-calendar-alt"></i> حجز موعد جديد</h3>
+            </div>
+            <form id="bookingForm" class="booking-form" novalidate>
+                <div class="form-group">
+                    <label>الاسم الثلاثي</label>
+                    <input type="text" id="name" required placeholder="مثال: محمد أحمد علي">
+                </div>
+                <div class="form-group">
+                    <label>رقم الهاتف</label>
+                    <input type="tel" id="phone" required placeholder="7xxxxxxxx" pattern="7[0-9]{8}">
+                </div>
+                <div class="form-group">
+                    <label>الخدمة المطلوبة</label>
+                    <select id="service" required>
+                        <option value="استشارة عامة" data-price="150">استشارة عامة (150 ريال)</option>
+                        <option value="فحص أسنان" data-price="200">فحص أسنان (200 ريال)</option>
+                        <option value="جلدية وليزر" data-price="300">جلدية وليزر (300 ريال)</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>التاريخ</label>
+                        <input type="date" id="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label>الوقت</label>
+                        <select id="time" required>
+                            <option value="">اختر الوقت</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary">تأكيد الحجز الآن</button>
+            </form>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>جميع الحقوق محفوظة لدى م. يونس الفيشي © 2024 </p>
+        <a href="login.html" style="font-size: 12px; color: #555; text-decoration: none;">دخول الموظفين</a>
+    </footer>
+
+    <script src="assets/js/core-engine.js"></script>
+    <script src="assets/js/sms-engine.js"></script>
+    <script>
+        const dateInput = document.getElementById('date');
+        const timeSelect = document.getElementById('time');
+
+        // set min date
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.min = today;
+
+        function generateTimes() {
+            timeSelect.innerHTML = '<option value="">اختر الوقت</option>';
+            const start = 9; // 9 AM
+            const end = 21;  // 9 PM
+            for(let i=start; i<end; i++) {
+                const hh = String(i).padStart(2,'0');
+                timeSelect.add(new Option(`${hh}:00`, `${hh}:00`));
+                timeSelect.add(new Option(`${hh}:30`, `${hh}:30`));
+            }
+        }
+        generateTimes();
+
+        document.getElementById('bookingForm').onsubmit = (e) => {
+            e.preventDefault();
+            const bookingData = {
+                name: document.getElementById('name').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+                service: document.getElementById('service').options[document.getElementById('service').selectedIndex].text,
+                price: document.getElementById('service').options[document.getElementById('service').selectedIndex].dataset.price,
+                date: dateInput.value,
+                time: timeSelect.value
+            };
+
+            const result = engine.saveBooking(bookingData);
+
+            if (result.success) {
+                SMSManager.notifyBooking(result.booking);
+                // nicer confirmation
+                const msg = `تم الحجز بنجاح!\nرقم المراجعة: ${result.booking.id}\nالتاريخ: ${result.booking.date} ${result.booking.time}`;
+                alert(msg);
+                location.reload();
+            } else {
+                alert(result.message);
+            }
+        };
+    </script>
+</body>
+</html>

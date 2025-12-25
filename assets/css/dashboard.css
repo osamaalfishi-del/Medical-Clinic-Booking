@@ -1,0 +1,44 @@
+/* dashboard.css - small additions specifically for dashboard components (kept separate) */
+
+/* Card header small utility */
+.card-utilities {
+  display: flex;
+  gap: 8px;
+  align-items: center
+}
+
+/* Compact table on small screens */
+@media (max-width:720px) {
+  .admin-table thead {
+    display: none
+  }
+
+  .admin-table,
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table td {
+    display: block;
+    width: 100%
+  }
+
+  .admin-table tr {
+    margin-bottom: 12px;
+    border-radius: 8px;
+    background: var(--card-bg);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+    padding: 12px
+  }
+
+  .admin-table td {
+    padding: 6px 0;
+    text-align: left;
+    border: none
+  }
+
+  .admin-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    display: inline-block;
+    width: 120px
+  }
+}
